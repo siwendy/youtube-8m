@@ -45,6 +45,7 @@ class LogisticModel(models.BaseModel):
       A dictionary with a tensor containing the probability predictions of the
       model in the 'predictions' key. The dimensions of the tensor are
       batch_size x num_classes."""
+    tf.add_to_collection("embedding", model_input)
     l2_penalty = l2_penalty or FLAGS.l2_penalty
     logits = slim.fully_connected(
         model_input, vocab_size, activation_fn=None,
@@ -82,6 +83,7 @@ class MoeModel(models.BaseModel):
       model in the 'predictions' key. The dimensions of the tensor are
       batch_size x num_classes.
     """
+    tf.add_to_collection("embedding", model_input)
     l2_penalty = l2_penalty or FLAGS.l2_penalty
     num_mixtures = num_mixtures or FLAGS.moe_num_mixtures
 
