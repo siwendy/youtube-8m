@@ -23,6 +23,7 @@ import export_model
 import losses
 import frame_level_models
 import nextvlad
+import attention_clusters
 import video_level_models
 import readers
 import tensorflow as tf
@@ -32,7 +33,9 @@ from tensorflow import flags
 from tensorflow import gfile
 from tensorflow import logging
 from tensorflow.python.client import device_lib
+from tensorflow.python.client import timeline
 import utils
+import traceback
 
 FLAGS = flags.FLAGS
 
@@ -105,6 +108,8 @@ if __name__ == "__main__":
         "log_device_placement", False,
         "Whether to write the device on which every op will run into the "
         "logs on startup.")
+    flags.DEFINE_bool(
+        "reverse_whiteening", False,"Whether to reverse whiteening")
 
 
 def validate_class_name(flag_value, category, modules, expected_superclass):
@@ -135,6 +140,38 @@ def validate_class_name(flag_value, category, modules, expected_superclass):
         return True
     raise flags.FlagsError("Unable to find %s '%s'." % (category, flag_value))
 
+def get_input_data_tensors2(reader,
+                           data_pattern,
+                           batch_size=1000,
+                           num_epochs=None,
+                           num_readers=1):
+  def parse_fn(example):
+    return reader.prepare_serialized_examples(example)
+    #return ret['video_matrix'],ret['labels'],ret['num_frames']
+    
+  with tf.name_scope("train_input"):
+    files = tf.data.Dataset.list_files(data_pattern)
+    dataset = files.interleave(tf.data.TFRecordDataset, cycle_length=num_readers)
+    #dataset = dataset.repeat(num_epochs)
+    #dataset = dataset.shuffle(buffer_size=1000*batch_size)
+    dataset = dataset.apply(tf.contrib.data.shuffle_and_repeat(100,num_epochs))
+    dataset = dataset.map(map_func=parse_fn, num_parallel_calls=num_readers)
+    dataset = dataset.batch(batch_size=batch_size)
+    dataset = dataset.prefetch(buffer_size=16)
+    iterator = dataset.make_one_shot_iterator()
+    _,x,y,z = iterator.get_next()
+    print("==================",x,y,z)
+    x = tf.squeeze(x,[1])
+    y = tf.squeeze(y,[1])
+    z = tf.squeeze(z,[1])
+    #xs = x.shape.as_list()
+    #ys = y.shape.as_list()
+    #zs = z.shape.as_list()
+    #print("tsm_shape",xs,ys,zs)
+    #x = tf.reshape(x, [-1,xs[2],xs[3]])
+    #y = tf.reshape(y, [-1,ys[2]])
+    #z = tf.reshape(z, [-1])
+    return _,x,y,z
 
 def get_input_data_tensors(reader,
                            data_pattern,
@@ -250,7 +287,7 @@ def build_graph(reader,
 
     optimizer = optimizer_class(learning_rate)
     unused_video_id, model_input_raw, labels_batch, num_frames = (
-        get_input_data_tensors(
+        get_input_data_tensors2(
             reader,
             train_data_pattern,
             batch_size=batch_size * num_towers,
@@ -259,17 +296,29 @@ def build_graph(reader,
     tf.summary.histogram("model/input_raw", model_input_raw)
     # feature_dim = len(model_input_raw.get_shape()) - 1
 
-    offset = np.array([4./512] * 1024 + [0]*128)
-    offset = tf.constant(offset, dtype=tf.float32)
+    if FLAGS.reverse_whiteening:
+      offset = np.array([4./512] * 1024 + [0]*128)
+      offset = tf.constant(offset, dtype=tf.float32)
 
-    eigen_val = tf.constant(np.sqrt(np.load("yt8m_pca/eigenvals.npy")[:1024, 0]), dtype=tf.float32)
+      eigen_val = tf.constant(np.sqrt(np.load("yt8m_pca/eigenvals.npy")[:1024, 0]), dtype=tf.float32)
 
-    model_input = tf.multiply(model_input_raw - offset,  tf.pad(eigen_val + 1e-4, [[0, 128]], constant_values=1.))
-    # model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+      model_input = tf.multiply(model_input_raw - offset,  tf.pad(eigen_val + 1e-4, [[0, 128]], constant_values=1.))
+      print("revsere whitening")
+    else:
+      feature_dim = len(model_input_raw.get_shape()) - 1
+      model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
 
-    tower_inputs = tf.split(model_input, num_towers)
-    tower_labels = tf.split(labels_batch, num_towers)
-    tower_num_frames = tf.split(num_frames, num_towers)
+    v_size = model_input_raw.get_shape()[0]
+    if v_size % num_towers == 0:
+      tower_inputs = tf.split(model_input, num_towers)
+      tower_labels = tf.split(labels_batch, num_towers)
+      tower_num_frames = tf.split(num_frames, num_towers)
+    else:
+      shared_size = (v_size // num_towers) - 1
+      splits = [shared_size]*(num_towers - 1) + [-1]
+      tower_inputs = tf.split(model_input, splits)
+      tower_labels = tf.split(labels_batch, splits)
+      tower_num_frames = tf.split(num_frames, splits)
     tower_gradients = []
     tower_predictions = []
     tower_label_losses = []
@@ -449,9 +498,11 @@ class Trainer(object):
             saver=saver)
 
         logging.info("%s: Starting managed session.", task_as_string(self.task))
+        n = 0
         with sv.managed_session(target, config=self.config) as sess:
             try:
                 logging.info("%s: Entering training loop.", task_as_string(self.task))
+                sess.graph.finalize()
                 while (not sv.should_stop()) and (not self.max_steps_reached):
                     batch_start_time = time.time()
                     _, global_step_val, loss_val, predictions_val, labels_val = sess.run(
@@ -502,6 +553,7 @@ class Trainer(object):
             except tf.errors.OutOfRangeError:
                 logging.info("%s: Done training -- epoch limit reached.",
                              task_as_string(self.task))
+                traceback.print_exc()
 
         logging.info("%s: Exited training loop.", task_as_string(self.task))
         sv.Stop()
@@ -688,7 +740,7 @@ def main(unused_argv):
     # Dispatch to a master, a worker, or a parameter server.
     if not cluster or task.type == "master" or task.type == "worker":
         model = find_class_by_name(FLAGS.model,
-                                   [frame_level_models, video_level_models, nextvlad])()
+                                   [frame_level_models, video_level_models, nextvlad, attention_clusters])()
 
         reader = get_reader()
 
