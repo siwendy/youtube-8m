@@ -304,3 +304,69 @@ class SelfAttentionModel(models.BaseModel):
             is_training=is_training,
             ff_dropout=ff_dropout,
             **unused_params)
+
+
+class MixSelfAttentionModel(models.BaseModel):
+    def create_model(self,
+                     model_input,
+                     vocab_size,
+                     num_frames,
+                     iterations=None,
+                     add_batch_norm=None,
+                     sample_random_frames=None,
+                     hidden_size=None,
+                     is_training=True,
+                     **unused_params):
+        cluster_dropout = FLAGS.self_attention_cluster_dropout
+        ff_dropout = FLAGS.self_attention_ff_dropout
+        filter_size = FLAGS.self_attention_filter_size
+        hidden_size = FLAGS.self_attention_hidden_size
+        n_head = FLAGS.self_attention_n_head
+        resid_dropout = FLAGS.self_attention_resid_dropout
+        n_layer = FLAGS.self_attention_n_layer
+
+        max_frames = model_input.get_shape().as_list()[1]
+        feature_size = model_input.get_shape().as_list()[2]
+        reshaped_input = tf.reshape(model_input, [-1, feature_size])
+
+        # Differentiate video & audio features.
+        video_features = reshaped_input[:, 0:1024]
+        audio_features = reshaped_input[:, 1024:]
+        video_features = tf.nn.l2_normalize(video_features, 1)
+        audio_features = tf.nn.l2_normalize(audio_features, 1)
+        mix_features = tf.concat([video_features, audio_features], 1)
+
+        video_cluster = SelfAttentionModule( feature_size = 1152,
+                                              max_frames = max_frames,
+                                              n_head = n_head,
+                                              n_layer = n_layer,
+                                              dropout_rate=cluster_dropout,
+                                              resid_dropout_rate=resid_dropout,
+                                               is_training=is_training)
+        with tf.variable_scope("mix_video_audio"):
+            activation = video_cluster.forward(mix_features)
+        activation = tf.layers.dense(activation, hidden_size, use_bias=False, activation=None)
+        activation = tf.layers.batch_normalization(activation, training=is_training)
+
+        # Deep context gating.
+        gating_weights1 = tf.layers.dense(activation, hidden_size * filter_size,
+                                          use_bias=False, activation=tf.nn.relu)
+        gating_weights1 = tf.layers.batch_normalization(gating_weights1, training=is_training)
+        if is_training:
+            gating_weights1 = tf.nn.dropout(gating_weights1, ff_dropout)
+
+        gating_weights2 = tf.layers.dense(gating_weights1, hidden_size, use_bias=False, activation=None)
+        gating_weights2 = tf.layers.batch_normalization(gating_weights2, training=is_training)
+        gating_weights2 = tf.sigmoid(gating_weights2)
+        activation = tf.multiply(activation, gating_weights2)
+
+        aggregated_model = getattr(video_level_models,
+                                   "MoeModel")
+
+        return aggregated_model().create_model(
+            model_input=activation,
+            filter_size=filter_size,
+            vocab_size=vocab_size,
+            is_training=is_training,
+            ff_dropout=ff_dropout,
+            **unused_params)
