@@ -24,6 +24,7 @@ import losses
 import frame_level_models
 import nextvlad
 import attention_clusters
+import self_attention
 import video_level_models
 import readers
 import tensorflow as tf
@@ -740,7 +741,7 @@ def main(unused_argv):
     # Dispatch to a master, a worker, or a parameter server.
     if not cluster or task.type == "master" or task.type == "worker":
         model = find_class_by_name(FLAGS.model,
-                                   [frame_level_models, video_level_models, nextvlad, attention_clusters])()
+                                   [frame_level_models, video_level_models, nextvlad, attention_clusters,self_attention])()
 
         reader = get_reader()
 
