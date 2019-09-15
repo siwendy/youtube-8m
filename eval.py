@@ -24,6 +24,8 @@ import losses
 import frame_level_models
 import video_level_models
 import nextvlad
+import attention_clusters
+import self_attention
 import readers
 import tensorflow as tf
 from tensorflow import app
@@ -307,7 +309,7 @@ def evaluate():
                                                          feature_sizes=feature_sizes)
 
         model = find_class_by_name(flags_dict["model"],
-                                   [frame_level_models, video_level_models, nextvlad])()
+                                   [frame_level_models, video_level_models, nextvlad, attention_clusters,self_attention])()
         label_loss_fn = find_class_by_name(flags_dict["label_loss"], [losses])()
 
         if FLAGS.eval_data_pattern is "":
