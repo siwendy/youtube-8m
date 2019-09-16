@@ -141,7 +141,7 @@ def workder_data(worker_id):
     frame_cmd = ['ffmpeg', '-loglevel quiet', '-y', '-i {}'.format(video_path), '-t 300 -vframes 300 -r 1 {}_%d.jpg'.format(video)]
     res1 = subprocess.call(' '.join(wav_cmd), shell=True)
     res2 = subprocess.call(' '.join(frame_cmd), shell=True)
-    fos.write('{}\t{}\t{}\n'.format(vid, res1, res2))
+    fos.write('{}\t{}\t{}\t{}\n'.format(vid, video, res1, res2))
   print('worker:{} total_num={} qps={:.3f}'.format(worker_id, n, n/float(time.time() - begin)))
   fos.close()
 
