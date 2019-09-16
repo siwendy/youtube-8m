@@ -135,11 +135,16 @@ def build_graph(reader,
 
     # Normalize input features.
     # model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
-    offset = np.array([4. / 512] * 1024 + [0] * 128)
-    offset = tf.constant(offset, dtype=tf.float32)
+    if FLAGS.reverse_whiteening:
+      offset = np.array([4. / 512] * 1024 + [0] * 128)
+      offset = tf.constant(offset, dtype=tf.float32)
 
-    eigen_val = tf.constant(np.sqrt(np.load("yt8m_pca/eigenvals.npy")[:1024, 0]), dtype=tf.float32)
-    model_input = tf.multiply(model_input_raw - offset, tf.pad(eigen_val + 1e-4, [[0, 128]], constant_values=1.))
+      eigen_val = tf.constant(np.sqrt(np.load("yt8m_pca/eigenvals.npy")[:1024, 0]), dtype=tf.float32)
+      model_input = tf.multiply(model_input_raw - offset, tf.pad(eigen_val + 1e-4, [[0, 128]], constant_values=1.))
+      print("revsere whitening")
+    else:
+      feature_dim = len(model_input_raw.get_shape()) - 1
+      model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
 
     with tf.variable_scope("tower"):
         result = model.create_model(model_input,
