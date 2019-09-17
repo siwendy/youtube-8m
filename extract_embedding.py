@@ -98,7 +98,7 @@ def get_input_data_tensors2(reader,
     return reader.prepare_serialized_examples(example)
     #return ret['video_matrix'],ret['labels'],ret['num_frames']
     
-  with tf.name_scope("train_input"):
+  with tf.name_scope("input"):
     files = tf.data.Dataset.list_files(data_pattern)
     dataset = files.interleave(tf.data.TFRecordDataset, cycle_length=num_readers)
     dataset = dataset.repeat(num_epochs)
@@ -192,8 +192,6 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
 
     sess.run(set_up_init_ops(tf.get_collection_ref(
         tf.GraphKeys.LOCAL_VARIABLES)))
-    sess.run(tf.global_variables_initializer())
-    sess.run(tf.local_variables_initializer())
 
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
