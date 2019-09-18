@@ -20,6 +20,8 @@ class AudioFeature():
     self.pca_params_path = self._maybe_download(AUDIO_SET_MAT)
     self.checkpoint_path = self._maybe_download(AUDIO_SET_GRAPH)
     self.pproc = vggish_postprocess.Postprocessor(self.pca_params_path)
+    self.features_tensor = None
+    self.embedding_tensor = None
   
   def _maybe_download(self, url):
     """Downloads `url` if not in `_model_dir`."""
@@ -57,6 +59,10 @@ class AudioFeature():
   def load_model(self, sess):
     vggish_slim.define_vggish_slim()
     vggish_slim.load_vggish_slim_checkpoint(sess, self.checkpoint_path)
+    self.features_tensor = sess.graph.get_tensor_by_name(
+        vggish_params.INPUT_TENSOR_NAME)
+    self.embedding_tensor = sess.graph.get_tensor_by_name(
+        vggish_params.OUTPUT_TENSOR_NAME)
 
   def mp4_audio_emb(self,sess,mp4_file,pca_enable=False):
     audio_file = self.mp4_wav(mp4_file)
@@ -71,12 +77,21 @@ class AudioFeature():
     #  vggish_slim.define_vggish_slim()
     #  vggish_slim.load_vggish_slim_checkpoint(sess, self.checkpoint_path)
     
-    features_tensor = sess.graph.get_tensor_by_name(
-        vggish_params.INPUT_TENSOR_NAME)
-    embedding_tensor = sess.graph.get_tensor_by_name(
-        vggish_params.OUTPUT_TENSOR_NAME)
-    [embedding_batch] = sess.run([embedding_tensor],
-                                 feed_dict={features_tensor: input_batch})
+        #vggish_params.OUTPUT_TENSOR_NAME)
+    [embedding_batch] = sess.run([self.embedding_tensor],
+                                 feed_dict={self.features_tensor: input_batch})
+    #================test audio emb =================
+    #expected_embedding_mean = 0.131
+    #expected_embedding_std = 0.238
+    #================test pca audio emb =============
+    if pca_enable:
+      postprocessed_batch = self.pproc.postprocess_no_quant(embedding_batch)
+      return postprocessed_batch
+    return embedding_batch
+  
+  def audio_emb_input_batch(self,sess,input_batch,pca_enable=False):
+    [embedding_batch] = sess.run([self.embedding_tensor],
+                                 feed_dict={self.features_tensor: input_batch})
     #================test audio emb =================
     #expected_embedding_mean = 0.131
     #expected_embedding_std = 0.238
