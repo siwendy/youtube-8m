@@ -213,7 +213,7 @@ def read_frame_and_audio_fn(worker_id):
     q = gpu_workers_queue[n % MAX_GPU_WORKER_NUM]
     q.put([vid, rgbs, input_batch])
     if n % print_num == 0:
-      print('read_frame_and_audio:{} total_num={} qps={:.3f} frame_sec_per_video={} audio_sec_per_video={}'.format(
+      print('read_frame_and_audio:{} total_num={} qps={:.3f} frame_sec_per_video={:.3f} audio_sec_per_video={:.3f}'.format(
         worker_id, n, print_num/float(batch_audio_sec + batch_frame_sec)
         ,batch_frame_sec/print_num,batch_audio_sec/print_num))
       batch_frame_sec = 0
@@ -320,9 +320,11 @@ def generate_tfrecord(gpu):
     batch_sec += sec
     if total_written % print_num  == 0:
       end = time.time()
-      print('Successfully encoded %i out of %i videos, qps=%f , sec=%d frame_sec_per_video=%f audio_sec_per_video=%f' %
+      print('Successfully encoded %i out of %i videos, qps=%f , sec=%d frame_sec_per_video=%.3f audio_sec_per_video=%.3f' %
         (total_written, total_written + total_error, float(print_num)/batch_sec, batch_sec,
           batch_frame_sec / print_num, batch_audio_sec / print_num))
+      batch_frame_sec = 0
+      batch_audio_sec = 0
       batch_sec = 0
       batch_begin = end
   for w in writer:

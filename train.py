@@ -148,7 +148,8 @@ def get_input_data_tensors2(reader,
                            num_readers=1):
   def parse_fn(example):
     return reader.prepare_serialized_examples(example)
-    #return ret['video_matrix'],ret['labels'],ret['num_frames']
+    #return batch_video_ids, batch_video_matrix, batch_labels, batch_frames
+    #return x['video_matrix'],x['labels'],x['num_frames'],x['video_ids']
     
   with tf.name_scope("train_input"):
     files = tf.data.Dataset.list_files(data_pattern)
@@ -160,11 +161,17 @@ def get_input_data_tensors2(reader,
     dataset = dataset.batch(batch_size=batch_size)
     dataset = dataset.prefetch(buffer_size=16)
     iterator = dataset.make_one_shot_iterator()
-    _,x,y,z = iterator.get_next()
-    print("==================",x,y,z)
-    x = tf.squeeze(x,[1])
-    y = tf.squeeze(y,[1])
-    z = tf.squeeze(z,[1])
+    batch_video_ids, batch_video_matrix, batch_labels, batch_frames  = iterator.get_next()
+    logging.info("==================data_pattern=",data_pattern)
+    logging.info("==================",batch_video_ids)
+    logging.info("==================",batch_video_matrix)
+    logging.info("==================",batch_labels)
+    logging.info("==================",batch_frames)
+    batch_video_ids = tf.squeeze(batch_video_ids,[1])
+    batch_video_matrix = tf.squeeze(batch_video_matrix,[1])
+    batch_labels = tf.squeeze(batch_labels,[1])
+    batch_frames = tf.squeeze(batch_frames,[1])
+    return batch_video_ids,batch_video_matrix, batch_labels, batch_frames
     #xs = x.shape.as_list()
     #ys = y.shape.as_list()
     #zs = z.shape.as_list()
@@ -172,7 +179,6 @@ def get_input_data_tensors2(reader,
     #x = tf.reshape(x, [-1,xs[2],xs[3]])
     #y = tf.reshape(y, [-1,ys[2]])
     #z = tf.reshape(z, [-1])
-    return _,x,y,z
 
 def get_input_data_tensors(reader,
                            data_pattern,
@@ -304,10 +310,11 @@ def build_graph(reader,
       eigen_val = tf.constant(np.sqrt(np.load("yt8m_pca/eigenvals.npy")[:1024, 0]), dtype=tf.float32)
 
       model_input = tf.multiply(model_input_raw - offset,  tf.pad(eigen_val + 1e-4, [[0, 128]], constant_values=1.))
-      print("revsere whitening")
+      logging.info("revsere whitening")
     else:
       feature_dim = len(model_input_raw.get_shape()) - 1
       model_input = tf.nn.l2_normalize(model_input_raw, feature_dim)
+      logging.info("no revsere whitening")
 
     v_size = model_input_raw.get_shape()[0]
     if v_size % num_towers == 0:
