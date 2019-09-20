@@ -1,4 +1,5 @@
 from frame_level_models import *
+from modeling import transformer_model,get_activation,create_initializer
 
 flags.DEFINE_integer("nextvlad_cluster_size", 64, "Number of units in the NeXtVLAD cluster layer.")
 flags.DEFINE_integer("nextvlad_hidden_size", 1024, "Number of units in the NeXtVLAD hidden layer.")
@@ -322,3 +323,129 @@ class MixNeXtVladModel(models.BaseModel):
             vocab_size=vocab_size,
             is_training=is_training,
             **unused_params)
+
+class SelfAttentionFusionNeXtVLADModel(models.BaseModel):
+    """Creates a SelfAttentionFusionNeXtVLAD based model.
+    Args:
+      model_input: A 'batch_size' x 'max_frames' x 'num_features' matrix of
+                   input features.
+      vocab_size: The number of classes in the dataset.
+      num_frames: A vector of length 'batch' which indicates the number of
+           frames for each video (before padding).
+    Returns:
+      A dictionary with a tensor containing the probability predictions of the
+      model in the 'predictions' key. The dimensions of the tensor are
+      'batch_size' x 'num_classes'.
+    """
+
+    def create_model(self,
+                     model_input,
+                     vocab_size,
+                     num_frames,
+                     cluster_size=None,
+                     hidden_size=None,
+                     is_training=True,
+                     groups=None,
+                     expansion=None,
+                     drop_rate=None,
+                     gating_reduction=None,
+                     **unused_params):
+        cluster_size = cluster_size or FLAGS.nextvlad_cluster_size
+        hidden1_size = hidden_size or FLAGS.nextvlad_hidden_size
+        gating_reduction = gating_reduction or FLAGS.gating_reduction
+        groups = groups or FLAGS.groups
+        drop_rate = drop_rate or FLAGS.drop_rate
+        expansion = expansion or FLAGS.expansion
+        half_cluster_size = int(cluster_size / 2)
+
+        mask = tf.sequence_mask(num_frames, 300, dtype=tf.float32)
+        max_frames = model_input.get_shape().as_list()[1]
+        video_nextvlad = NeXtVLAD(1024, max_frames, cluster_size, is_training, groups=groups, expansion=expansion)
+        audio_nextvlad = NeXtVLAD(128, max_frames, half_cluster_size, is_training, groups=groups // 2, expansion=expansion)
+
+        with tf.variable_scope("video_VLAD"):
+            vlad_video = video_nextvlad.forward(model_input[:, :, 0:1024], mask=mask)
+
+        with tf.variable_scope("audio_VLAD"):
+            vlad_audio = audio_nextvlad.forward(model_input[:, :, 1024:], mask=mask)
+
+        feature_size1 = expansion * 1024 // groups
+        feature_size2 = expansion * 128 // (groups //2)
+        print("tsm video=",vlad_video)
+        print("tsm audio=",vlad_audio)
+        vlad_video = tf.reshape(vlad_video, [-1, cluster_size,  feature_size1])
+        vlad_audio = tf.reshape(vlad_audio, [-1, half_cluster_size,  feature_size2])
+        vlad_audio = slim.fully_connected(vlad_audio, feature_size1, activation_fn=tf.nn.sigmoid,
+                                         weights_initializer=slim.variance_scaling_initializer())
+        print("tsm video=",vlad_video)
+        print("tsm audio=",vlad_audio)
+        sequence_output = transformer_model(
+            input_tensor=tf.concat([vlad_video, vlad_audio],1),
+            attention_mask=None,
+            hidden_size=feature_size1,
+            num_hidden_layers=4,
+            num_attention_heads=8,
+            intermediate_size=3*feature_size1,
+                    intermediate_act_fn=get_activation('relu'),
+                    hidden_dropout_prob=0.5,
+                    attention_probs_dropout_prob=0.1,
+                    initializer_range=0.02,
+                    do_return_all_layers=False)
+
+        vlad = tf.reduce_mean(sequence_output, 1)
+        #vlad = tf.concat([vlad_video, vlad_audio], 1)
+
+        if drop_rate > 0.:
+            vlad = slim.dropout(vlad, keep_prob=1. - drop_rate, is_training=is_training, scope="vlad_dropout")
+
+        vlad_dim = vlad.get_shape().as_list()[1]
+        print("VLAD dimension", vlad_dim)
+        hidden1_weights = tf.get_variable("hidden1_weights",
+                                          [vlad_dim, hidden1_size],
+                                          initializer=slim.variance_scaling_initializer())
+
+        activation = tf.matmul(vlad, hidden1_weights)
+        activation = slim.batch_norm(
+            activation,
+            center=True,
+            scale=True,
+            is_training=is_training,
+            scope="hidden1_bn",
+            fused=False)
+
+        # activation = tf.nn.relu(activation)
+
+        gating_weights_1 = tf.get_variable("gating_weights_1",
+                                           [hidden1_size, hidden1_size // gating_reduction],
+                                           initializer=slim.variance_scaling_initializer())
+
+        gates = tf.matmul(activation, gating_weights_1)
+
+        gates = slim.batch_norm(
+            gates,
+            center=True,
+            scale=True,
+            is_training=is_training,
+            activation_fn=slim.nn.relu,
+            scope="gating_bn")
+
+        gating_weights_2 = tf.get_variable("gating_weights_2",
+                                           [hidden1_size // gating_reduction, hidden1_size],
+                                           initializer=slim.variance_scaling_initializer()
+                                           )
+        gates = tf.matmul(gates, gating_weights_2)
+
+        gates = tf.sigmoid(gates)
+        tf.summary.histogram("final_gates", gates)
+
+        activation = tf.multiply(activation, gates)
+
+        aggregated_model = getattr(video_level_models,
+                                   FLAGS.video_level_classifier_model)
+
+        return aggregated_model().create_model(
+            model_input=activation,
+            vocab_size=vocab_size,
+            is_training=is_training,
+            **unused_params)
+

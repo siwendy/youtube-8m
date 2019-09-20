@@ -40,6 +40,8 @@ flags.DEFINE_float("self_attention_ff_dropout", 0.5,
                    "Dropout rate for Feed Forward operation")
 flags.DEFINE_float("self_attention_resid_dropout", 0.5,
                    "Dropout rate for Feed Forward operation")
+flags.DEFINE_bool("self_avg_embed", True,
+                     "layer num.")
 
 FLAGS = flags.FLAGS
 
@@ -53,7 +55,7 @@ def shape_list(x):
   return [ts[i] if ps[i] is None else ps[i] for i in range(len(ps))]
 
 class SelfAttentionModule():
-    def __init__(self, feature_size, max_frames, n_head, n_layer, dropout_rate, resid_dropout_rate, is_training):
+    def __init__(self, feature_size, max_frames, n_head, n_layer, dropout_rate, resid_dropout_rate, is_training, avg_emb):
         """ Initialize SelfAttentionModule.
         :param dropout_rate: float
         :param cluster_size: int
@@ -66,6 +68,7 @@ class SelfAttentionModule():
         self.resid_dropout_rate = resid_dropout_rate 
         self.n_head = n_head;
         self.n_layer = n_layer;
+        self.avg_emb = avg_emb;
 
     def _norm(self, x, g=None, b=None, e=1e-5, axis=[1]):
         u = tf.reduce_mean(x, axis=axis, keep_dims=True)
@@ -196,35 +199,46 @@ class SelfAttentionModule():
         """
         inputs = tf.reshape(inputs, [-1, self.feature_size])
         h = tf.reshape(inputs, [-1, self.max_frames, self.feature_size])
-        cls = tf.get_variable("cls", [self.feature_size], initializer=tf.random_normal_initializer(stddev=0.02))
-        h = tf.map_fn(lambda x: tf.concat(([cls], x), axis=0), h)
-        #return tf.reduce_sum(h, 1)
-        #CLS
-        #for layer in range(0, self.n_layer):
-        #  h = self.block(h, 'h%d'%layer, train=self.is_training, scale=True)
-        #first_token_tensor = tf.squeeze(h[:, 0:1, :], axis=1)
-        sequence_output = transformer_model(
-            input_tensor=h,
-            attention_mask=None,
-            hidden_size=self.feature_size,
-            num_hidden_layers=self.n_layer,
-            num_attention_heads=self.n_head,
-            intermediate_size=3*self.feature_size,
-                    intermediate_act_fn=get_activation('relu'),
-                    hidden_dropout_prob=0.1,
-                    attention_probs_dropout_prob=0.1,
-                    initializer_range=0.02,
-                    do_return_all_layers=False)
-        with tf.variable_scope("pooler"):
-            # We "pool" the model by simply taking the hidden state corresponding
-            # to the first token. We assume that this has been pre-trained
-            first_token_tensor = tf.squeeze(
-                sequence_output[:, 0:1, :], axis=1)
-            return tf.layers.dense(
-                first_token_tensor,
-                self.feature_size,
-                activation=tf.tanh,
-                kernel_initializer=create_initializer(0.02))
+        if self.avg_emb:
+          print("avg_emb")
+          sequence_output = transformer_model(
+              input_tensor=h,
+              attention_mask=None,
+              hidden_size=self.feature_size,
+              num_hidden_layers=self.n_layer,
+              num_attention_heads=self.n_head,
+              intermediate_size=3*self.feature_size,
+                      intermediate_act_fn=get_activation('relu'),
+                      hidden_dropout_prob=0.1,
+                      attention_probs_dropout_prob=0.1,
+                      initializer_range=0.02,
+                      do_return_all_layers=False)
+          return tf.reduce_mean(sequence_output, 1)
+        else:
+          cls = tf.get_variable("cls", [self.feature_size], initializer=tf.random_normal_initializer(stddev=0.02))
+          h = tf.map_fn(lambda x: tf.concat(([cls], x), axis=0), h)
+          sequence_output = transformer_model(
+              input_tensor=h,
+              attention_mask=None,
+              hidden_size=self.feature_size,
+              num_hidden_layers=self.n_layer,
+              num_attention_heads=self.n_head,
+              intermediate_size=3*self.feature_size,
+                      intermediate_act_fn=get_activation('relu'),
+                      hidden_dropout_prob=0.1,
+                      attention_probs_dropout_prob=0.1,
+                      initializer_range=0.02,
+                      do_return_all_layers=False)
+          with tf.variable_scope("pooler"):
+              # We "pool" the model by simply taking the hidden state corresponding
+              # to the first token. We assume that this has been pre-trained
+              first_token_tensor = tf.squeeze(
+                  sequence_output[:, 0:1, :], axis=1)
+              return tf.layers.dense(
+                  first_token_tensor,
+                  self.feature_size,
+                  activation=tf.tanh,
+                  kernel_initializer=create_initializer(0.02))
 
 
 class SelfAttentionModel(models.BaseModel):
@@ -245,6 +259,7 @@ class SelfAttentionModel(models.BaseModel):
         n_head = FLAGS.self_attention_n_head
         resid_dropout = FLAGS.self_attention_resid_dropout
         n_layer = FLAGS.self_attention_n_layer
+        avg_embeeding  = FLAGS.self_avg_embed
 
         max_frames = model_input.get_shape().as_list()[1]
         feature_size = model_input.get_shape().as_list()[2]
@@ -264,6 +279,7 @@ class SelfAttentionModel(models.BaseModel):
                                               n_layer = n_layer,
                                               dropout_rate=cluster_dropout,
                                               resid_dropout_rate=resid_dropout,
+                                              avg_emb=avg_embeeding,
                                                is_training=is_training)
         audio_cluster = SelfAttentionModule(feature_size = 128,
                                               max_frames = max_frames,
@@ -271,6 +287,7 @@ class SelfAttentionModel(models.BaseModel):
                                               n_layer = n_layer,
                                               dropout_rate=cluster_dropout,
                                               resid_dropout_rate=resid_dropout,
+                                              avg_emb=avg_embeeding,
                                                is_training=is_training)
         with tf.variable_scope("video"):
             video_cluster_activation = video_cluster.forward(video_features)
@@ -324,6 +341,7 @@ class MixSelfAttentionModel(models.BaseModel):
         n_head = FLAGS.self_attention_n_head
         resid_dropout = FLAGS.self_attention_resid_dropout
         n_layer = FLAGS.self_attention_n_layer
+        avg_embeeding  = FLAGS.self_avg_embed
 
         max_frames = model_input.get_shape().as_list()[1]
         feature_size = model_input.get_shape().as_list()[2]
@@ -342,6 +360,7 @@ class MixSelfAttentionModel(models.BaseModel):
                                               n_layer = n_layer,
                                               dropout_rate=cluster_dropout,
                                               resid_dropout_rate=resid_dropout,
+                                              avg_emb=avg_embeeding,
                                                is_training=is_training)
         with tf.variable_scope("mix_video_audio"):
             activation = video_cluster.forward(mix_features)
