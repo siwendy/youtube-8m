@@ -55,6 +55,8 @@ if __name__ == "__main__":
                          "How many threads to use for reading input files.")
     flags.DEFINE_boolean("run_once", False, "Whether to run eval only once.")
     flags.DEFINE_integer("top_k", 20, "How many predictions to output per video.")
+    flags.DEFINE_bool(
+        "reverse_whiteening", False,"Whether to reverse whiteening")
 
 
 def find_class_by_name(name, modules):
