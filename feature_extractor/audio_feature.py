@@ -4,6 +4,7 @@ from vggish import mel_features,vggish_input,vggish_params,vggish_postprocess,vg
 import os
 import tensorflow as tf
 import sys
+import time
 
 AUDIO_SET_GRAPH = 'https://storage.googleapis.com/audioset/vggish_model.ckpt'
 AUDIO_SET_MAT = 'https://storage.googleapis.com/audioset/vggish_pca_params.npz'
@@ -44,7 +45,8 @@ class AudioFeature():
   def mp4_wav(self,mp4_file):
     def get_vid(video_file):
       filename = video_file.split("/")[-1]
-      return filename[0:-4]
+      #return filename[0:-4]
+      return filename.split('.')[0]
     if not self.wav_tmp_path:
       wav_filename = mp4_file.replace('.mp4','.wav')
     else:
@@ -64,13 +66,22 @@ class AudioFeature():
     self.embedding_tensor = sess.graph.get_tensor_by_name(
         vggish_params.OUTPUT_TENSOR_NAME)
 
-  def mp4_audio_emb(self,sess,mp4_file,pca_enable=False):
+  def mp4_audio_emb(self,sess,mp4_file,pca_enable=False, perf=False):
     audio_file = self.mp4_wav(mp4_file)
-    print("audioget",self.wav_tmp_path,audio_file,file=sys.stderr)
+    #print("audioget",self.wav_tmp_path,audio_file,file=sys.stderr)
     if audio_file:
-      return  self.audio_emb(sess,audio_file,pca_enable)
+      if perf:
+        begin = time.time()
+        x = self.audio_emb(sess,audio_file,pca_enable)
+        end = time.time()
+        return [x,end - begin]
+      else:
+        return self.audio_emb(sess,audio_file,pca_enable)
     else:
-      return None
+      if perf:
+        return None,0
+      else:
+        return None
   def audio_emb(self,sess,audio_file,pca_enable=False):
     input_batch = vggish_input.wavfile_to_examples(audio_file)
     #with tf.Graph().as_default(), tf.Session() as sess:

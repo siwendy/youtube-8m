@@ -172,9 +172,14 @@ def main(unused_argv):
     for video_file, labels in csv.reader(open(FLAGS.input_videos_csv)):
       rgb_features = []
       sum_rgb_features = None
+      one_begin = time.time()
+      frame_gpu_sec = 0
       for rgb in frame_iterator(
           video_file, every_ms=1000.0 / FLAGS.frames_per_second):
+        frame_gpu_begin = time.time()
         features = extractor.extract_rgb_frame_features(rgb[:, :, ::-1])
+        frame_gpu_end = time.time()
+        frame_gpu_sec += frame_gpu_end - frame_gpu_begin
         if sum_rgb_features is None:
           sum_rgb_features = features
         else:
@@ -185,6 +190,7 @@ def main(unused_argv):
         print >> sys.stderr, 'Could not get features for ' + video_file
         total_error += 1
         continue
+      frame_end = time.time()
 
       mean_rgb_features = sum_rgb_features / len(rgb_features)
 
@@ -202,7 +208,8 @@ def main(unused_argv):
                   float_list=tf.train.FloatList(value=mean_rgb_features)),
       }
 
-      raw_audio_features  = audio_fea.mp4_audio_emb(sess,video_file,FLAGS.pca_enable)
+      audio_begin = time.time()
+      raw_audio_features,audio_gpu_sec  = audio_fea.mp4_audio_emb(sess,video_file,FLAGS.pca_enable,perf=True)
       if not (type(raw_audio_features) == type(None)):
         sum_audio_features = None
         audio_features = []
@@ -220,11 +227,13 @@ def main(unused_argv):
         context_features['mean_audio'] = tf.train.Feature(
             float_list=tf.train.FloatList(value=mean_audio_features))
       else:
+        print("no_audio_feature",video_file)
         zero_vec = [0] * 128
         feature_list['audio'] = tf.train.FeatureList(
             feature=[_bytes_feature(_make_bytes(zero_vec))] * len(rgb_features))
         context_features['mean_audio'] = tf.train.Feature(
             float_list=tf.train.FloatList(value=zero_vec))   
+      audio_end = time.time()
 
       if FLAGS.skip_frame_level_features:
         example = tf.train.SequenceExample(
@@ -233,6 +242,13 @@ def main(unused_argv):
         example = tf.train.SequenceExample(
             context=tf.train.Features(feature=context_features),
             feature_lists=tf.train.FeatureLists(feature_list=feature_list))
+      print("total_sec={} frame={} frame_gpu={} audio={} audio_gpu={} finish={}".format(
+        int(time.time() - one_begin), 
+        int(frame_end - one_begin), 
+        int(frame_gpu_sec), 
+        int(audio_end - audio_begin), 
+        int(audio_gpu_sec), 
+        video_file))
       writer.write(example.SerializeToString())
       total_written += 1
       #print("example=",example)
