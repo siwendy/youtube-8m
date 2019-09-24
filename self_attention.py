@@ -209,8 +209,8 @@ class SelfAttentionModule():
               num_attention_heads=self.n_head,
               intermediate_size=3*self.feature_size,
                       intermediate_act_fn=get_activation('relu'),
-                      hidden_dropout_prob=0.1,
-                      attention_probs_dropout_prob=0.1,
+                      hidden_dropout_prob=0.1 if self.is_training else 0,
+                      attention_probs_dropout_prob=0.1 if self.is_training else 0,
                       initializer_range=0.02,
                       do_return_all_layers=False)
           return tf.reduce_mean(sequence_output, 1)
@@ -225,8 +225,8 @@ class SelfAttentionModule():
               num_attention_heads=self.n_head,
               intermediate_size=3*self.feature_size,
                       intermediate_act_fn=get_activation('relu'),
-                      hidden_dropout_prob=0.1,
-                      attention_probs_dropout_prob=0.1,
+                      hidden_dropout_prob=0.1 if self.is_training else 0,
+                      attention_probs_dropout_prob=0.1 if self.is_training else 0,
                       initializer_range=0.02,
                       do_return_all_layers=False)
           with tf.variable_scope("pooler"):
