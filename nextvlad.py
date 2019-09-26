@@ -1,18 +1,20 @@
 from frame_level_models import *
 from modeling import transformer_model,get_activation,create_initializer
 
-flags.DEFINE_integer("nextvlad_cluster_size", 64, "Number of units in the NeXtVLAD cluster layer.")
-flags.DEFINE_integer("nextvlad_hidden_size", 1024, "Number of units in the NeXtVLAD hidden layer.")
-
-flags.DEFINE_integer("groups", 8, "number of groups in VLAD encoding")
-flags.DEFINE_float("drop_rate", 0.5, "dropout ratio after VLAD encoding")
-flags.DEFINE_integer("expansion", 2, "expansion ratio in Group NetVlad")
-flags.DEFINE_integer("gating_reduction", 8, "reduction factor in se context gating")
-flags.DEFINE_bool("enable_gate", True, "enable output gate")
-
-flags.DEFINE_integer("mix_number", 3, "the number of gvlad models")
-flags.DEFINE_float("cl_temperature", 2, "temperature in collaborative learning")
-flags.DEFINE_float("cl_lambda", 1.0, "penalty factor of cl loss")
+import common
+FLAGS = common.FLAGS
+#flags.DEFINE_integer("nextvlad_cluster_size", 64, "Number of units in the NeXtVLAD cluster layer.")
+#flags.DEFINE_integer("nextvlad_hidden_size", 1024, "Number of units in the NeXtVLAD hidden layer.")
+#
+#flags.DEFINE_integer("groups", 8, "number of groups in VLAD encoding")
+#flags.DEFINE_float("drop_rate", 0.5, "dropout ratio after VLAD encoding")
+#flags.DEFINE_integer("expansion", 2, "expansion ratio in Group NetVlad")
+#flags.DEFINE_integer("gating_reduction", 8, "reduction factor in se context gating")
+#flags.DEFINE_bool("enable_gate", True, "enable output gate")
+#
+#flags.DEFINE_integer("mix_number", 3, "the number of gvlad models")
+#flags.DEFINE_float("cl_temperature", 2, "temperature in collaborative learning")
+#flags.DEFINE_float("cl_lambda", 1.0, "penalty factor of cl loss")
 
 
 class NeXtVLAD():

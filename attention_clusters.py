@@ -23,23 +23,25 @@ from frame_level_models import *
 #import modules
 
 
-flags.DEFINE_integer("video_cluster_size", 256,
-                     "The size of video cluster.")
-flags.DEFINE_integer("audio_cluster_size", 32,
-                     "The size of audio cluster.")
-flags.DEFINE_integer("filter_size", 2,
-                     "The filter multiplier size for deep context gate.")
-flags.DEFINE_integer("hidden_size", 1024,
-                     "The number of units after attention cluster layer.")
-flags.DEFINE_bool("shift_operation", True,
-                  "True iff shift operation is on.")
-flags.DEFINE_float("cluster_dropout", 0.7,
-                   "Dropout rate for clustering operation")
-flags.DEFINE_float("ff_dropout", 0.8,
-                   "Dropout rate for Feed Forward operation")
+#flags.DEFINE_integer("video_cluster_size", 256,
+#                     "The size of video cluster.")
+#flags.DEFINE_integer("audio_cluster_size", 32,
+#                     "The size of audio cluster.")
+#flags.DEFINE_integer("filter_size", 2,
+#                     "The filter multiplier size for deep context gate.")
+#flags.DEFINE_integer("hidden_size", 1024,
+#                     "The number of units after attention cluster layer.")
+#flags.DEFINE_bool("shift_operation", True,
+#                  "True iff shift operation is on.")
+#flags.DEFINE_float("cluster_dropout", 0.7,
+#                   "Dropout rate for clustering operation")
+#flags.DEFINE_float("ff_dropout", 0.8,
+#                   "Dropout rate for Feed Forward operation")
+#
+#FLAGS = flags.FLAGS
 
-FLAGS = flags.FLAGS
-
+import common
+FLAGS = common.FLAGS
 
 class AttentionClusterModule():
     def __init__(self, feature_size, max_frames, dropout_rate, cluster_size,

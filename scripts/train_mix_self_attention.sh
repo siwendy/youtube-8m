@@ -9,9 +9,9 @@ test_path=/media/linrongc/dream/data/yt8m/2/frame/test
 datapath=/home/taisimin/frame/tmp/*/
 
 model_name=MixSelfAttentionModel
-parameters="--self_attention_n_head=8 --self_attention_n_layer=2 --self_attention_filter_size=2 --self_attention_cluster_dropout=0.5 --self_attention_ff_dropout=0.5 --self_attention_hidden_size=512 --self_avg_embed True"
+parameters="--self_attention_n_head=8 --self_attention_n_layer=2 --self_attention_hidden_size=512 --self_avg_embed=True --self_attention_hidden_dropout=0.3 --self_attention_attention_dropout=0.1"
 
-train_dir=trained_model/${model_name}_avg
+train_dir=trained_model/AvgMixSelfAttentionModel
 result_folder=results
 
 echo "model name: " $model_name
