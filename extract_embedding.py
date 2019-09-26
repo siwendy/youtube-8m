@@ -19,6 +19,7 @@ import glob
 import json
 import tarfile
 import time
+import numpy as np
 
 import numpy
 import tensorflow as tf
@@ -78,6 +79,8 @@ if __name__ == '__main__':
       "How many examples to process per batch.")
   flags.DEFINE_integer("num_readers", 1,
                        "How many threads to use for reading input files.")
+  flags.DEFINE_bool(
+        "reverse_whiteening", False,"Whether to reverse whiteening")
 
 def format_lines(video_ids, predictions, top_k):
   batch_size = len(video_ids)
@@ -163,7 +166,18 @@ def get_input_data_tensors(reader, data_pattern, batch_size, num_readers=10):
 
 def inference(reader, train_dir, data_pattern, out_file_location, batch_size, top_k):
   with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess, gfile.Open(out_file_location, "w+") as out_file:
-    video_id_batch, video_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
+    logging.info("data_input_pattern:" + data_pattern)
+    video_id_batch, model_input_raw, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
+    if FLAGS.reverse_whiteening:
+      offset = np.array([4. / 512] * 1024 + [0] * 128)
+      offset = tf.constant(offset, dtype=tf.float32)
+      eigen_val = tf.constant(np.sqrt(np.load("yt8m_pca/eigenvals.npy")[:1024, 0]), dtype=tf.float32)
+      video_batch = tf.multiply(model_input_raw - offset, tf.pad(eigen_val + 1e-4, [[0, 128]], constant_values=1.))
+      print("revsere whitening")
+    else:
+      feature_dim = len(model_input_raw.get_shape()) - 1
+      video_batch = tf.nn.l2_normalize(model_input_raw, feature_dim)
+
     print("========tsm===========",video_id_batch, video_batch, num_frames_batch)
     checkpoint_file = os.path.join(FLAGS.train_dir, "inference_model" if FLAGS.model_name == "" else FLAGS.model_name)
     if not gfile.Exists(checkpoint_file + ".meta"):
@@ -201,7 +215,7 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     try:
       while not coord.should_stop():
           video_id_batch_val, video_batch_val,num_frames_batch_val = sess.run([video_id_batch, video_batch, num_frames_batch])
-          #print(video_id_batch_val,len(num_frames_batch_val))
+          #print(video_id_batch_val,len(num_frames_batch_val)
           embs = sess.run([embedding_ops], feed_dict={input_tensor: video_batch_val, num_frames_tensor: num_frames_batch_val})
           #print(len(embs),len(embs[0]),len(embs[0][0]), len(video_id_batch_val),  embs[0][0])
           for vid,emb in zip(video_id_batch_val, embs[0]):
