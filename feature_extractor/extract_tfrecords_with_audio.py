@@ -113,7 +113,7 @@ def frame_iterator(filename, every_ms=1000, max_num_frames=300):
   """
   video_capture = cv2.VideoCapture()
   if not video_capture.open(filename):
-    print >> sys.stderr, 'Error: Cannot open video file ' + filename
+    print('Error: Cannot open video file ' + filename, file=sys.stderr)
     return
   last_ts = -99999  # The timestamp of last retrieved frame.
   num_retrieved = 0
@@ -187,7 +187,7 @@ def main(unused_argv):
         rgb_features.append(_bytes_feature(quantize(features)))
 
       if not rgb_features:
-        print >> sys.stderr, 'Could not get features for ' + video_file
+        print('Could not get features for ' + video_file, file=sys.stderr)
         total_error += 1
         continue
       frame_end = time.time()
@@ -210,7 +210,7 @@ def main(unused_argv):
 
       audio_begin = time.time()
       raw_audio_features,audio_gpu_sec  = audio_fea.mp4_audio_emb(sess,video_file,FLAGS.pca_enable,perf=True)
-      if not (type(raw_audio_features) == type(None)):
+      if not (type(raw_audio_features) == type(None)) and raw_audio_features.shape[0] != 0:
         sum_audio_features = None
         audio_features = []
         #print("audio_feature",type(raw_audio_features))
@@ -242,10 +242,12 @@ def main(unused_argv):
         example = tf.train.SequenceExample(
             context=tf.train.Features(feature=context_features),
             feature_lists=tf.train.FeatureLists(feature_list=feature_list))
-      print("total_sec={} frame={} frame_gpu={} audio={} audio_gpu={} finish={}".format(
+      print("total={} sec={} frame={} frame_gpu={} frame_size={} audio={} audio_gpu={} finish={}".format(
+        total_written,
         int(time.time() - one_begin), 
         int(frame_end - one_begin), 
         int(frame_gpu_sec), 
+        len(rgb_features),
         int(audio_end - audio_begin), 
         int(audio_gpu_sec), 
         video_file))

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=0
 num_gpu=1
 
 datapath=/media/linrongc/dream/data/yt8m/2/frame/train

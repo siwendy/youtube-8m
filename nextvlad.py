@@ -8,6 +8,7 @@ flags.DEFINE_integer("groups", 8, "number of groups in VLAD encoding")
 flags.DEFINE_float("drop_rate", 0.5, "dropout ratio after VLAD encoding")
 flags.DEFINE_integer("expansion", 2, "expansion ratio in Group NetVlad")
 flags.DEFINE_integer("gating_reduction", 8, "reduction factor in se context gating")
+flags.DEFINE_bool("enable_gate", True, "enable output gate")
 
 flags.DEFINE_integer("mix_number", 3, "the number of gvlad models")
 flags.DEFINE_float("cl_temperature", 2, "temperature in collaborative learning")
@@ -150,30 +151,33 @@ class NeXtVLADModel(models.BaseModel):
 
         # activation = tf.nn.relu(activation)
 
-        gating_weights_1 = tf.get_variable("gating_weights_1",
-                                           [hidden1_size, hidden1_size // gating_reduction],
-                                           initializer=slim.variance_scaling_initializer())
+        if FLAGS.enable_gate:
+          gating_weights_1 = tf.get_variable("gating_weights_1",
+                                             [hidden1_size, hidden1_size // gating_reduction],
+                                             initializer=slim.variance_scaling_initializer())
 
-        gates = tf.matmul(activation, gating_weights_1)
+          gates = tf.matmul(activation, gating_weights_1)
 
-        gates = slim.batch_norm(
-            gates,
-            center=True,
-            scale=True,
-            is_training=is_training,
-            activation_fn=slim.nn.relu,
-            scope="gating_bn")
+          gates = slim.batch_norm(
+              gates,
+              center=True,
+              scale=True,
+              is_training=is_training,
+              activation_fn=slim.nn.relu,
+              scope="gating_bn")
 
-        gating_weights_2 = tf.get_variable("gating_weights_2",
-                                           [hidden1_size // gating_reduction, hidden1_size],
-                                           initializer=slim.variance_scaling_initializer()
-                                           )
-        gates = tf.matmul(gates, gating_weights_2)
+          gating_weights_2 = tf.get_variable("gating_weights_2",
+                                             [hidden1_size // gating_reduction, hidden1_size],
+                                             initializer=slim.variance_scaling_initializer()
+                                             )
+          gates = tf.matmul(gates, gating_weights_2)
 
-        gates = tf.sigmoid(gates)
-        tf.summary.histogram("final_gates", gates)
+          gates = tf.sigmoid(gates)
+          tf.summary.histogram("final_gates", gates)
 
-        activation = tf.multiply(activation, gates)
+          activation = tf.multiply(activation, gates)
+        else:
+          print("no final gate")
 
         aggregated_model = getattr(video_level_models,
                                    FLAGS.video_level_classifier_model)
