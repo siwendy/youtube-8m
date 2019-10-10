@@ -125,6 +125,7 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
   with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess, gfile.Open(out_file_location, "w+") as out_file:
     video_id_batch, video_batch, num_frames_batch = get_input_data_tensors(reader, data_pattern, batch_size)
     checkpoint_file = os.path.join(FLAGS.train_dir, "inference_model")
+    
     if not gfile.Exists(checkpoint_file + ".meta"):
       raise IOError("Cannot find %s. Did you run eval.py?" % checkpoint_file)
     meta_graph_location = checkpoint_file + ".meta"
@@ -150,7 +151,7 @@ def inference(reader, train_dir, data_pattern, out_file_location, batch_size, to
     def set_up_init_ops(variables):
       init_op_list = []
       for variable in list(variables):
-        if "train_input" in variable.name:
+        if "eval_input" in variable.name:
           init_op_list.append(tf.assign(variable, 1))
           variables.remove(variable)
       init_op_list.append(tf.variables_initializer(variables))
@@ -214,7 +215,6 @@ def main(unused_argv):
   else:
     reader = readers.YT8MAggregatedFeatureReader(feature_names=feature_names,
                                                  feature_sizes=feature_sizes)
-
   if FLAGS.output_file is "":
     raise ValueError("'output_file' was not specified. "
       "Unable to continue with inference.")
